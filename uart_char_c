@@ -1,0 +1,165 @@
+
+
+
+// FUNCTION DECLARATION
+
+char read_input(void);
+char capital_input(char d);
+void write_output(char d);
+void UART0_Handler( void );
+
+// _______________________________________
+
+typedef unsigned           int uint32_t;
+
+
+
+//_________________________REGISTER MAPPING__________________________
+ 
+// ###_________________UART0____________________###
+
+#define UART0_BASE 0x4000C000
+
+// UART INCLUDED REGISTERS 
+
+#define UARTCTL0 *((volatile uint32_t*)(UART0_BASE + 0x030))
+#define UARTIBRD0 *((volatile uint32_t*)(UART0_BASE + 0x024))
+#define UARTFBRD0 *((volatile uint32_t*)(UART0_BASE + 0x028))
+#define UARTLCRH0 *((volatile uint32_t*)(UART0_BASE + 0x02C))
+#define UARTCC0 *((volatile uint32_t*)(UART0_BASE + 0xFC8))
+#define UARTICR0 *((volatile uint32_t*)(UART0_BASE + 0x044))
+#define UARTIM0 *((volatile uint32_t*)(UART0_BASE + 0x038))
+#define UARTFR0 *((volatile uint32_t*)(UART0_BASE + 0x018))
+#define UARTDR0 *((volatile uint32_t*)(UART0_BASE + 0x000))
+	
+//__________________________________________________
+
+// ###_________________GPIOA____________________###
+
+#define GPIOA_Base 0x40058000
+
+// GPIOA INCLUDED REGISTERS 
+
+#define GPIOAAFSEL *((volatile uint32_t*)(GPIOA_Base + 0x420))
+#define GPIOAPCTL *((volatile uint32_t*)(GPIOA_Base + 0x52C))
+#define GPIOADEN *((volatile uint32_t*)(GPIOA_Base + 0x51C))
+
+//__________________________________________________
+
+
+
+// ###_________________SYSCTL____________________###
+
+#define System_control_Base 0x400FE000
+
+// SYSCTL INCLUDED REGISTERS 
+
+#define RCGCGPIO *((volatile uint32_t*)(System_control_Base + 0x608))
+#define RCGCUART *((volatile uint32_t*)(System_control_Base + 0x618))
+
+//__________________________________________________
+
+
+
+// ###_________________NVIC____________________###
+
+#define Core_Peripherals_Base 0xE000E000
+
+#define NVICEN0 *((volatile uint32_t*)(Core_Peripherals_Base + 0x100))
+//__________________________________________________
+
+int main(){
+	
+//	1. Enable the UART module using the RCGCUART register (see page 344).
+	RCGCUART |= (1<<0); 
+	
+// 2. Enable the clock to the appropriate GPIO module via the RCGCGPIO register (see page 340).
+// To find out which GPIO port to enable, refer to Table 23-5 on page 1351.
+	RCGCGPIO |= (1<<0);
+	
+// 3. Set the GPIO AFSEL bits for the appropriate pins (see page 671). To determine which GPIOs to
+// configure, see Table 23-4 on page 1344.
+	GPIOAAFSEL |= (1<<0) | (1<<1);
+	
+// 4. Configure the GPIO current level and/or slew rate as specified for the mode selected (see
+// page 673 and page 681).
+	// 5. Configure the PMCn fields in the GPIOPCTL register to assign the UART signals to the appropriate
+//pins (see page 688 and Table 23-5 on page 1351).
+	GPIOAPCTL |= (1<<0) | (1<<4);
+	GPIOADEN |= (1<<0) | (1<<1);
+
+	
+	// BAUD RATE DIVISOR : 
+	// BRD = 20,000,000 / (16 * 9600) = 130.208333333
+// UARTFBRD[DIVFRAC] = integer(0.208333333 * 64 + 0.5) = 13
+
+	// 1. Disable the UART by clearing the UARTEN bit in the UARTCTL register.
+	UARTCTL0 &= ~(1<<0); 
+	
+  // 2. Write the integer portion of the BRD to the UARTIBRD register.
+	UARTIBRD0 = 130;
+//   3. Write the fractional portion of the BRD to the UARTFBRD register.
+	UARTFBRD0 = 13;
+//   4. Write the desired serial parameters to the UARTLCRH register (in this case, a value of
+//   0x0000.0060).
+	UARTLCRH0 = (0x3<<5); 
+//   5. Configure the UART clock source by writing to the UARTCC register.
+	UARTCC0 = (0<<0);
+//   6. Optionally, configure the µDMA channel (see “Micro Direct Memory Access (µDMA)” on page 585)
+//   and enable the DMA option(s) in the UARTDMACTL register.
+//   7. Enable the UART by setting the UARTEN bit in the UARTCTL register
+	UARTCTL0 = (1<<0)|(1<<8)|(1<<9);
+	
+	//CLEAR PREVIOUS RECIEVE INTERRUPTS
+	UARTICR0 |= (1<<4);
+	// ENABLE RECIEVE INTERRUPTS
+	UARTIM0 |= (1<<4);
+	//ENABLES IRQ 5 OF UART0
+	NVICEN0 |= (1<<5);
+	
+	
+	
+	
+	while(1)
+	{
+	}
+	
+}
+
+/*
+	char read_input(void){
+		char c;
+	while ((UART0->FR & (1<<4) )!= 0);
+	c = UART0->DR;
+	
+	return c;	
+}
+	*/
+void write_output(char d)
+{
+	while ((UARTFR0 & (1<<4) )!= 0)
+	{
+	 UARTDR0 = d;	
+	}
+}
+
+char capital_input(char d)
+	{
+		char f;
+		if(d >= 'a' && d <= 'z'){
+		f = d - 32;
+		}else if(d >= 'A' && d <= 'Z')
+		{
+			f = d;
+		}else { f = '0';}
+		return f;
+	}
+
+void UART0_Handler( void )
+	{
+unsigned char c = 0;
+unsigned char capc = 0;
+UARTICR0 |= (1<<4); // Clear receive interrupt
+c = UARTDR0 ; // get the received data byte
+	capc = capital_input(c);
+write_output(capc); }// send data that is received
